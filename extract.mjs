@@ -44,6 +44,8 @@ for (const [alt, ab] of Object.entries(ALT)) byAbbr[alt] = byAbbr[ab];
 
 function clean(html) {
   return html
+    .replace(/^[^<>]*>/, ' ')  // chunk starts mid-tag (token matched inside a tag's attributes)
+    .replace(/<[^>]*$/, ' ')   // chunk ends mid-tag
     .replace(/<span class="bold1"><span class="italic">[\s\S]*?<\/span><\/span>/g, ' ') // section headings
     .replace(/<a\b[^>]*href[^>]*>[\s\S]*?<\/a>/g, ' ') // cross-refs, note links, insights/profile margin links
     .replace(/<sup[^>]*>[\s\S]*?<\/sup>/g, ' ')
