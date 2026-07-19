@@ -113,6 +113,29 @@ for (const f of files) {
   } else put(clean(html.slice(last).replace(/<\/body>[\s\S]*$/, '')));
 }
 
+// ---- second pass: recovery notes (files after the scripture region) ----
+const noteFiles = readdirSync(SRC).filter(f => /_split_\d+\.html$/.test(f))
+  .map(f => [f, +f.match(/_split_(\d+)\.html$/)[1]])
+  .filter(([, n]) => n > 1485).sort((a, b) => a[1] - b[1]).map(([f]) => f);
+const NOTE_RE = /<p class="calibre4"><a href[^>]*><span class="bold1">([1-3]?\s?[A-Za-z]+)\s*<\/span><\/a>\s*<a[^>]*><span class="bold1">(\d+):(\d+)((?:[-–,]\s?\d+(?::\d+)?)?)<\/span><\/a>([\s\S]*?)<\/p>/g;
+const notes = {}; // notes[name][ch] = [{v, ref, t}]
+let noteCount = 0;
+for (const f of noteFiles) {
+  const html = readFileSync(join(SRC, f), 'utf8');
+  for (const m of html.matchAll(NOTE_RE)) {
+    const name = byAbbr[m[1].replace(/\s/g, '')];
+    if (!name) continue;
+    const t = clean(m[5]).replace(/\(\s*[;,]?\s*\)/g, '').replace(/\s+([.,;])/g, '$1').replace(/\s+/g, ' ').trim();
+    if (!t) continue;
+    ((notes[name] ||= {})[+m[2]] ||= []).push({ v: +m[3], ref: m[2] + ':' + m[3] + m[4].replace(/\s/g, ''), t });
+    noteCount++;
+  }
+}
+for (const name of Object.keys(notes)) {
+  writeFileSync(join(OUT, name.replace(/\s+/g, '') + '.notes.json'), JSON.stringify(notes[name]));
+}
+console.log('notes:', noteCount, 'books with notes:', Object.keys(notes).length);
+
 // Emit
 let verseCount = 0;
 const manifest = [];

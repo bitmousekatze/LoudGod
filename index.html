@@ -50,7 +50,16 @@
     #topbar .loc:hover { text-decoration: underline; }
 
     /* ---- the book ---- */
-    #reader { position: fixed; top: 48px; bottom: 74px; left: 0; right: 0; display: flex; align-items: center; justify-content: center; perspective: 2200px; }
+    #reader { position: fixed; top: 48px; bottom: 74px; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 22px; perspective: 2200px; }
+    .margin-col { width: 218px; max-height: 92%; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; scrollbar-color: var(--gold-soft) transparent; }
+    .note-card { background: var(--panel); border-left: 2px solid var(--gold-soft); padding: 10px 12px; font-size: 0.72rem; line-height: 1.6; color: #b9c0ca; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+    .margin-col.right .note-card { border-left: none; border-right: 2px solid var(--gold-soft); text-align: left; }
+    .note-card:hover { border-color: var(--gold); background: #222a37; }
+    .note-card.reading { border-color: var(--gold); background: #2a3242; color: var(--ink); box-shadow: 0 0 18px var(--gold-soft); }
+    .note-card .nref { display: block; color: var(--gold); font-family: 'Courier New', monospace; font-size: 0.68rem; letter-spacing: 0.1em; margin-bottom: 4px; }
+    .note-star { color: #a58545; cursor: pointer; font-size: 0.75em; margin-left: 2px; vertical-align: super; transition: color 0.15s, text-shadow 0.15s; }
+    .note-star:hover, .note-star.reading { color: #8a5a10; text-shadow: 0 0 8px var(--gold); }
+    @media (max-width: 1180px) { .margin-col { display: none; } }
     #book {
       position: relative; width: min(680px, 94vw); height: min(100%, 860px);
       background: linear-gradient(105deg, var(--paper-edge) 0%, var(--paper) 3.5%, var(--paper) 96%, var(--paper-edge) 100%);
@@ -142,6 +151,7 @@
   </div>
 
   <div id="reader" class="hidden">
+    <div class="margin-col left" id="margin-left"></div>
     <div id="book">
       <div id="page-clip"><div id="pages"></div></div>
       <div id="turn-shade"></div>
@@ -149,6 +159,7 @@
       <div class="flip-zone right" id="flip-right" title="next page"></div>
       <div id="page-num"></div>
     </div>
+    <div class="margin-col right" id="margin-right"></div>
   </div>
 
   <div id="hud" class="hidden">
@@ -163,7 +174,8 @@
   const $ = id => document.getElementById(id);
   const LS = 'loudgod-v1';
   const state = { manifest: [], bookIdx: 0, ch: 0, verse: 0, playing: false, rate: 1, voiceURI: null,
-                  chapterData: null, utter: null, page: 0, pageCount: 1, pageW: 0 };
+                  chapterData: null, utter: null, page: 0, pageCount: 1, pageW: 0,
+                  chapterNotes: [], noteUtter: null };
 
   const saved = JSON.parse(localStorage.getItem(LS) || 'null');
   if (saved) { state.bookIdx = saved.bookIdx || 0; state.ch = saved.ch || 0; state.verse = saved.verse || 0; state.rate = saved.rate || 1; state.voiceURI = saved.voiceURI || null; }
@@ -208,6 +220,10 @@
   async function loadChapterData(bookIdx) {
     const b = state.manifest[bookIdx];
     if (!b._data) b._data = await (await fetch('data/' + b.id + '.json')).json();
+    if (b._notes === undefined) {
+      const r = await fetch('data/' + b.id + '.notes.json');
+      b._notes = r.ok ? await r.json() : null;
+    }
     return b._data;
   }
 
@@ -257,12 +273,21 @@
     const pages = $('pages'); pages.innerHTML = '';
     const h = document.createElement('h1'); h.id = 'chap-title'; h.textContent = title;
     pages.appendChild(h);
+    state.chapterNotes = (b._notes && b._notes[ch + 1]) || [];
     state.chapterData.forEach((v, i) => {
       const s = document.createElement('span');
       s.className = 'verse'; s.id = 'v' + i;
-      s.innerHTML = '<span class="vn">' + v.v + '</span><span class="vt"></span> ';
+      s.innerHTML = '<span class="vn">' + v.v + '</span><span class="vt"></span>';
       s.querySelector('.vt').textContent = v.t;
       s.onclick = () => { state.verse = i; save(); if (state.playing) { stopSpeech(); speak(); } else paint(true); };
+      state.chapterNotes.forEach((n, ni) => {
+        if (n.v !== v.v) return;
+        const star = document.createElement('span');
+        star.className = 'note-star'; star.id = 'star' + ni; star.textContent = '★';
+        star.title = 'Recovery note ' + n.ref + ' — click to hear it';
+        star.onclick = ev => { ev.stopPropagation(); readNote(ni); };
+        s.appendChild(star);
+      });
       pages.appendChild(s);
       pages.append(' ');
     });
@@ -286,9 +311,14 @@
   }
 
   function pageOfVerse(i) {
-    const el = $('v' + i);
-    if (!el) return 0;
-    return Math.max(0, Math.round(el.offsetLeft / (state.pageW + 96)));
+    // measure the verse-number span: a tiny single-box element, so its offsetLeft is
+    // stable even when the verse text spans a page break (the verse span itself
+    // reports the wrong box in that case, which caused page-turn flicker)
+    // floor, not round: offsetLeft = column * (pageW + gap) + x-within-the-line,
+    // so rounding kicks anything past mid-page onto the next page (the flicker bug)
+    const el = $('v' + i), vn = el && el.querySelector('.vn');
+    if (!vn) return 0;
+    return Math.max(0, Math.floor(vn.offsetLeft / (state.pageW + 96)));
   }
 
   function gotoPage(p, dir) {
@@ -297,12 +327,60 @@
     state.page = p;
     $('pages').style.transform = 'translateX(' + (-p * (state.pageW + 96)) + 'px)';
     $('page-num').textContent = (p + 1) + ' / ' + state.pageCount;
+    renderMarginNotes();
     if (changed && dir) {
       const book = $('book');
       book.classList.remove('turning-fwd', 'turning-back');
       void book.offsetWidth; // restart animation
       book.classList.add(dir > 0 ? 'turning-fwd' : 'turning-back');
     }
+  }
+
+  // ---------- margin notes ----------
+  function noteVerseIdx(n) {
+    let idx = state.chapterData.findIndex(v => v.v === n.v);
+    if (idx < 0) idx = state.chapterData.findIndex(v => v.v > n.v) - 1; // merged-verse fallback
+    return Math.max(0, idx);
+  }
+  function renderMarginNotes() {
+    const L = $('margin-left'), R = $('margin-right');
+    L.innerHTML = ''; R.innerHTML = '';
+    let side = 0;
+    state.chapterNotes.forEach((n, ni) => {
+      if (pageOfVerse(noteVerseIdx(n)) !== state.page) return;
+      const card = document.createElement('div');
+      card.className = 'note-card'; card.dataset.ni = ni;
+      const ref = document.createElement('span'); ref.className = 'nref'; ref.textContent = '★ ' + n.ref;
+      card.appendChild(ref); card.append(n.t);
+      card.onclick = () => readNote(ni);
+      (side++ % 2 ? R : L).appendChild(card);
+    });
+  }
+
+  function readNote(ni) {
+    const n = state.chapterNotes[ni];
+    if (!n) return;
+    const wasPlaying = state.playing;
+    if (wasPlaying) { state.playing = false; $('play-btn').textContent = 'PLAY'; }
+    stopSpeech(); stopNote();
+    const u = new SpeechSynthesisUtterance('Recovery note, ' + n.ref.replace(':', ' ') + '. ' + n.t);
+    const voice = speechSynthesis.getVoices().find(x => x.voiceURI === state.voiceURI);
+    if (voice) u.voice = voice;
+    u.rate = state.rate;
+    state.noteUtter = u;
+    document.querySelectorAll('.note-card[data-ni="' + ni + '"], #star' + ni).forEach(el => el.classList.add('reading'));
+    const done = () => {
+      if (state.noteUtter !== u) return;
+      state.noteUtter = null;
+      document.querySelectorAll('.reading').forEach(el => el.classList.remove('reading'));
+      if (wasPlaying) play(); // resume scripture where it left off
+    };
+    u.onend = done; u.onerror = done;
+    speechSynthesis.speak(u);
+  }
+  function stopNote() {
+    state.noteUtter = null;
+    document.querySelectorAll('.reading').forEach(el => el.classList.remove('reading'));
   }
 
   function paint(jump) {
@@ -363,7 +441,7 @@
       vt.appendChild(w);
       vt.append(text.slice(end));
       // auto page-turn when the spoken word crosses onto the next page
-      const wp = Math.max(0, Math.round(w.offsetLeft / (state.pageW + 96)));
+      const wp = Math.max(0, Math.floor(w.offsetLeft / (state.pageW + 96)));
       if (wp !== state.page) gotoPage(wp, wp > state.page ? 1 : -1);
     };
     u.onend = () => {
@@ -377,7 +455,11 @@
     speechSynthesis.speak(u);
   }
 
-  function play() { if (state.playing) return; state.playing = true; $('play-btn').textContent = 'PAUSE'; speak(); }
+  function play() {
+    if (state.playing) return;
+    if (state.noteUtter) { speechSynthesis.cancel(); stopNote(); }
+    state.playing = true; $('play-btn').textContent = 'PAUSE'; speak();
+  }
   function pause() { state.playing = false; $('play-btn').textContent = 'PLAY'; stopSpeech(); paint(); }
   $('play-btn').onclick = () => state.playing ? pause() : play();
 
