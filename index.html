@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoudGod — The Life Recovery Bible, read aloud</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #14181f; --panel: #1c222c; --ink: #e8e0cd; --dim: #6b7280;
+      --gold: #d4af6a; --gold-soft: #d4af6a55; --hl: #2e3a4e;
+    }
+    body { background: var(--bg); color: var(--ink); font-family: Georgia, 'Times New Roman', serif; min-height: 100vh; }
+    button, select, input { font-family: 'Courier New', monospace; }
+
+    /* ---- landing ---- */
+    #landing { position: fixed; inset: 0; background: var(--bg); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 24px; transition: opacity 0.5s; overflow-y: auto; }
+    #landing.hidden, .hidden { display: none !important; }
+    #landing h1 { font-size: clamp(2rem, 8vw, 4.2rem); letter-spacing: 0.12em; color: var(--gold); text-shadow: 0 0 40px var(--gold-soft); font-weight: normal; }
+    #landing .sub { color: var(--dim); font-size: 0.95rem; font-style: italic; text-align: center; }
+    .controls { display: flex; flex-direction: column; gap: 14px; width: min(340px, 92vw); }
+    .crow { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--dim); font-family: 'Courier New', monospace; }
+    .crow label { min-width: 52px; }
+    .crow input[type=range] { flex: 1; accent-color: var(--gold); cursor: pointer; }
+    .crow select { flex: 1; background: var(--panel); color: var(--ink); border: 1px solid var(--gold-soft); padding: 6px; font-size: 0.8rem; cursor: pointer; outline: none; min-width: 0; }
+    .crow .val { min-width: 34px; text-align: right; color: var(--gold); }
+    .big-btn { background: transparent; color: var(--gold); border: 1px solid var(--gold-soft); padding: 12px 24px; font-size: 0.9rem; letter-spacing: 0.15em; text-transform: uppercase; cursor: pointer; transition: all 0.15s; }
+    .big-btn:hover { background: var(--gold-soft); border-color: var(--gold); box-shadow: 0 0 20px var(--gold-soft); }
+    .big-btn:active { transform: scale(0.97); }
+
+    /* ---- library (book picker) ---- */
+    #library { position: fixed; inset: 0; background: var(--bg); z-index: 90; overflow-y: auto; padding: 28px 5vw 60px; }
+    #library h2 { font-family: 'Courier New', monospace; color: var(--gold); font-size: 1rem; letter-spacing: 0.2em; margin: 26px 0 12px; border-bottom: 1px solid var(--gold-soft); padding-bottom: 6px; }
+    #library .topbar { display: flex; justify-content: space-between; align-items: center; }
+    .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .book-btn { background: var(--panel); border: 1px solid transparent; color: var(--ink); padding: 10px 12px; text-align: left; cursor: pointer; font-size: 0.8rem; transition: all 0.12s; }
+    .book-btn:hover { border-color: var(--gold); color: var(--gold); }
+    .book-btn small { color: var(--dim); display: block; font-size: 0.68rem; margin-top: 2px; }
+    #chapters { margin-top: 8px; }
+    .ch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }
+    .ch-btn { background: var(--panel); border: 1px solid transparent; color: var(--ink); padding: 10px 0; cursor: pointer; font-size: 0.8rem; transition: all 0.12s; }
+    .ch-btn:hover { border-color: var(--gold); color: var(--gold); }
+    .small-btn { background: transparent; border: 1px solid var(--gold-soft); color: var(--gold); padding: 6px 14px; font-size: 0.72rem; cursor: pointer; letter-spacing: 0.08em; }
+    .small-btn:hover { background: var(--gold-soft); }
+
+    /* ---- reading view ---- */
+    #reader { padding: 70px 0 140px; }
+    #verses { max-width: 680px; margin: 0 auto; padding: 0 22px; font-size: clamp(1.05rem, 2.4vw, 1.3rem); line-height: 2; }
+    #chap-title { max-width: 680px; margin: 0 auto 26px; padding: 0 22px; color: var(--gold); font-size: 1.5rem; letter-spacing: 0.06em; }
+    .verse { color: #9aa3ad; transition: color 0.25s, background 0.25s; cursor: pointer; border-radius: 4px; padding: 1px 3px; }
+    .verse:hover { color: var(--ink); }
+    .verse .vn { color: var(--gold-soft); font-size: 0.7em; vertical-align: super; margin-right: 4px; font-family: 'Courier New', monospace; }
+    .verse.active { color: var(--ink); background: var(--hl); }
+    .verse.done { color: var(--ink); }
+    .verse.active .w-hl { color: var(--gold); text-shadow: 0 0 12px var(--gold-soft); }
+
+    /* ---- top bar ---- */
+    #topbar { position: fixed; top: 0; left: 0; right: 0; height: 48px; background: #10141aee; backdrop-filter: blur(6px); border-bottom: 1px solid var(--gold-soft); display: flex; align-items: center; gap: 10px; padding: 0 14px; z-index: 50; font-family: 'Courier New', monospace; }
+    #topbar .loc { color: var(--gold); font-size: 0.85rem; letter-spacing: 0.08em; cursor: pointer; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #topbar .loc:hover { text-decoration: underline; }
+
+    /* ---- HUD ---- */
+    #hud { position: fixed; bottom: 0; left: 0; right: 0; padding: 12px 18px 16px; background: linear-gradient(transparent, #10141a 45%); display: flex; align-items: center; gap: 14px; z-index: 50; font-family: 'Courier New', monospace; }
+    #hud button { background: transparent; border: 1px solid var(--gold-soft); color: var(--gold); padding: 8px 16px; font-size: 0.85rem; cursor: pointer; letter-spacing: 0.1em; -webkit-tap-highlight-color: transparent; }
+    #hud button:hover { background: var(--gold-soft); }
+    #play-btn { min-width: 92px; }
+    #hud-speed { accent-color: var(--gold); width: 90px; cursor: pointer; }
+    #hud .spd { color: var(--dim); font-size: 0.72rem; }
+    #progress { flex: 1; height: 5px; background: var(--panel); border-radius: 3px; cursor: pointer; }
+    #progress-bar { height: 100%; background: var(--gold); width: 0%; border-radius: 3px; }
+    @media (max-width: 560px) { #hud { flex-wrap: wrap; } #progress { order: -1; flex-basis: 100%; } }
+  </style>
+</head>
+<body>
+
+  <div id="landing">
+    <h1>LOUDGOD</h1>
+    <p class="sub">The Life Recovery Bible &mdash; read aloud, cover to cover.<br/>Old &amp; New Testament.</p>
+    <div class="controls">
+      <div class="crow"><label>voice</label><select id="voice-sel"></select></div>
+      <div class="crow"><label>speed</label><input type="range" id="speed" min="0.5" max="2" step="0.05" value="1"/><span class="val" id="speed-val">1.0x</span></div>
+      <button class="big-btn" id="continue-btn">Continue</button>
+      <button class="big-btn" id="start-btn">Choose a Book</button>
+      <button class="big-btn" id="genesis-btn">Start at Genesis 1</button>
+    </div>
+  </div>
+
+  <div id="library" class="hidden">
+    <div class="topbar"><h2 style="margin:0;border:none;">CHOOSE A BOOK</h2><button class="small-btn" id="lib-close">back</button></div>
+    <div id="book-list"></div>
+    <div id="chapters" class="hidden">
+      <h2 id="ch-book-name"></h2>
+      <div class="ch-grid" id="ch-grid"></div>
+    </div>
+  </div>
+
+  <div id="topbar" class="hidden">
+    <button class="small-btn" id="nav-books">books</button>
+    <span class="loc" id="loc"></span>
+    <button class="small-btn" id="prev-ch">&larr;</button>
+    <button class="small-btn" id="next-ch">&rarr;</button>
+  </div>
+
+  <div id="reader" class="hidden">
+    <h1 id="chap-title"></h1>
+    <div id="verses"></div>
+  </div>
+
+  <div id="hud" class="hidden">
+    <button id="play-btn">PLAY</button>
+    <div id="progress"><div id="progress-bar"></div></div>
+    <span class="spd" id="hud-speed-val">1.0x</span>
+    <input type="range" id="hud-speed" min="0.5" max="2" step="0.05" value="1"/>
+  </div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const LS = 'loudgod-v1';
+  const state = { manifest: [], bookIdx: 0, ch: 0, verse: 0, playing: false, rate: 1, voiceURI: null, chapterData: null, utter: null };
+
+  const saved = JSON.parse(localStorage.getItem(LS) || 'null');
+  if (saved) { state.bookIdx = saved.bookIdx || 0; state.ch = saved.ch || 0; state.verse = saved.verse || 0; state.rate = saved.rate || 1; state.voiceURI = saved.voiceURI || null; }
+
+  function save() {
+    localStorage.setItem(LS, JSON.stringify({ bookIdx: state.bookIdx, ch: state.ch, verse: state.verse, rate: state.rate, voiceURI: state.voiceURI }));
+  }
+
+  // ---------- voices ----------
+  function loadVoices() {
+    const vs = speechSynthesis.getVoices().filter(v => v.lang.startsWith('en'));
+    const sel = $('voice-sel');
+    sel.innerHTML = '';
+    vs.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v.voiceURI; o.textContent = v.name.replace(/Microsoft |Google /,'') + (v.localService ? '' : ' ☁');
+      if (v.voiceURI === state.voiceURI) o.selected = true;
+      sel.appendChild(o);
+    });
+    if (!state.voiceURI && vs.length) state.voiceURI = vs[0].voiceURI;
+  }
+  speechSynthesis.onvoiceschanged = loadVoices;
+  loadVoices();
+  $('voice-sel').onchange = e => { state.voiceURI = e.target.value; save(); if (state.playing) { stopSpeech(); speak(); } };
+
+  // ---------- speed ----------
+  function setRate(r) {
+    state.rate = +r;
+    $('speed').value = r; $('hud-speed').value = r;
+    $('speed-val').textContent = $('hud-speed-val').textContent = (+r).toFixed(2).replace(/0$/,'') + 'x';
+    save();
+  }
+  $('speed').oninput = e => setRate(e.target.value);
+  $('hud-speed').oninput = e => { setRate(e.target.value); if (state.playing) { stopSpeech(); speak(); } };
+  setRate(state.rate);
+
+  // ---------- data ----------
+  async function loadManifest() {
+    state.manifest = await (await fetch('data/manifest.json')).json();
+    buildLibrary();
+  }
+  async function loadChapterData(bookIdx) {
+    const b = state.manifest[bookIdx];
+    if (!b._data) b._data = await (await fetch('data/' + b.id + '.json')).json();
+    return b._data;
+  }
+
+  // ---------- library ----------
+  function buildLibrary() {
+    const wrap = $('book-list'); wrap.innerHTML = '';
+    for (const t of ['OT', 'NT']) {
+      const h = document.createElement('h2');
+      h.textContent = t === 'OT' ? 'OLD TESTAMENT' : 'NEW TESTAMENT';
+      wrap.appendChild(h);
+      const grid = document.createElement('div'); grid.className = 'book-grid';
+      state.manifest.forEach((b, i) => {
+        if (b.testament !== t) return;
+        const btn = document.createElement('button');
+        btn.className = 'book-btn';
+        btn.innerHTML = b.name + '<small>' + b.chapters + ' chapter' + (b.chapters > 1 ? 's' : '') + '</small>';
+        btn.onclick = () => showChapters(i);
+        grid.appendChild(btn);
+      });
+      wrap.appendChild(grid);
+    }
+  }
+  function showChapters(bookIdx) {
+    const b = state.manifest[bookIdx];
+    $('chapters').classList.remove('hidden');
+    $('ch-book-name').textContent = b.name.toUpperCase();
+    const g = $('ch-grid'); g.innerHTML = '';
+    for (let c = 0; c < b.chapters; c++) {
+      const btn = document.createElement('button');
+      btn.className = 'ch-btn'; btn.textContent = c + 1;
+      btn.onclick = () => { openChapter(bookIdx, c, 0); };
+      g.appendChild(btn);
+    }
+    $('chapters').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  // ---------- reader ----------
+  async function openChapter(bookIdx, ch, verse, autoplay) {
+    stopSpeech();
+    state.bookIdx = bookIdx; state.ch = ch; state.verse = verse || 0;
+    const data = await loadChapterData(bookIdx);
+    state.chapterData = data[ch] || [];
+    const b = state.manifest[bookIdx];
+    const title = (b.name === 'Psalms' ? 'Psalm' : b.name) + ' ' + (ch + 1);
+    $('chap-title').textContent = title;
+    $('loc').textContent = title;
+    document.title = 'LoudGod — ' + title;
+    const wrap = $('verses'); wrap.innerHTML = '';
+    state.chapterData.forEach((v, i) => {
+      const s = document.createElement('span');
+      s.className = 'verse'; s.id = 'v' + i;
+      s.innerHTML = '<span class="vn">' + v.v + '</span><span class="vt"></span> ';
+      s.querySelector('.vt').textContent = v.t;
+      s.onclick = () => { state.verse = i; markProgress(); if (state.playing) { stopSpeech(); speak(); } else { paint(); } };
+      wrap.appendChild(s);
+    });
+    show('reader'); save(); paint();
+    if (autoplay) play();
+  }
+
+  function show(view) {
+    ['landing', 'library', 'reader'].forEach(v => $(v).classList.add('hidden'));
+    $(view).classList.remove('hidden');
+    const inReader = view === 'reader';
+    $('topbar').classList.toggle('hidden', !inReader);
+    $('hud').classList.toggle('hidden', !inReader);
+    if (view === 'library') $('chapters').classList.add('hidden');
+  }
+
+  function paint() {
+    state.chapterData.forEach((_, i) => {
+      const el = $('v' + i); if (!el) return;
+      el.classList.toggle('active', i === state.verse);
+      el.classList.toggle('done', i < state.verse);
+    });
+    const el = $('v' + state.verse);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    $('progress-bar').style.width = (state.chapterData.length ? (state.verse / state.chapterData.length * 100) : 0) + '%';
+  }
+  function markProgress() { save(); paint(); }
+
+  // ---------- speech ----------
+  function stopSpeech() { state.utter = null; speechSynthesis.cancel(); }
+
+  function speak() {
+    const v = state.chapterData[state.verse];
+    if (!v) { nextChapter(true); return; }
+    paint();
+    const u = new SpeechSynthesisUtterance(v.t);
+    const voice = speechSynthesis.getVoices().find(x => x.voiceURI === state.voiceURI);
+    if (voice) u.voice = voice;
+    u.rate = state.rate;
+    state.utter = u;
+    const el = $('v' + state.verse), vt = el && el.querySelector('.vt'), text = v.t;
+    u.onboundary = e => {
+      if (e.name !== 'word' || !vt) return;
+      const start = e.charIndex;
+      let end = text.indexOf(' ', start); if (end < 0) end = text.length;
+      vt.innerHTML = '';
+      vt.append(text.slice(0, start));
+      const w = document.createElement('span'); w.className = 'w-hl'; w.textContent = text.slice(start, end);
+      vt.appendChild(w);
+      vt.append(text.slice(end));
+    };
+    u.onend = () => {
+      if (state.utter !== u) return; // cancelled
+      if (vt) vt.textContent = text;
+      state.verse++;
+      save();
+      if (state.verse >= state.chapterData.length) nextChapter(true);
+      else speak();
+    };
+    speechSynthesis.speak(u);
+  }
+
+  function play() { if (state.playing) return; state.playing = true; $('play-btn').textContent = 'PAUSE'; speak(); }
+  function pause() { state.playing = false; $('play-btn').textContent = 'PLAY'; stopSpeech(); paint(); }
+  $('play-btn').onclick = () => state.playing ? pause() : play();
+
+  async function nextChapter(autoplay) {
+    stopSpeech();
+    let { bookIdx, ch } = state;
+    const b = state.manifest[bookIdx];
+    if (ch + 1 < b.chapters) ch++;
+    else if (bookIdx + 1 < state.manifest.length) { bookIdx++; ch = 0; }
+    else { pause(); return; } // Revelation 22 — the end
+    await openChapter(bookIdx, ch, 0, autoplay && state.playing);
+    if (autoplay && state.playing) { $('play-btn').textContent = 'PAUSE'; }
+  }
+  async function prevChapter() {
+    stopSpeech();
+    let { bookIdx, ch } = state;
+    if (ch > 0) ch--;
+    else if (bookIdx > 0) { bookIdx--; ch = state.manifest[bookIdx].chapters - 1; }
+    const wasPlaying = state.playing; state.playing = false;
+    await openChapter(bookIdx, ch, 0, wasPlaying);
+    if (wasPlaying) play();
+  }
+  $('next-ch').onclick = () => { const p = state.playing; pause(); state.playing = p; nextChapter(p).then(() => { if (p) { state.playing = true; $('play-btn').textContent = 'PAUSE'; } }); };
+  $('prev-ch').onclick = () => prevChapter();
+
+  $('progress').onclick = e => {
+    const frac = (e.clientX - e.currentTarget.getBoundingClientRect().left) / e.currentTarget.offsetWidth;
+    state.verse = Math.max(0, Math.min(state.chapterData.length - 1, Math.floor(frac * state.chapterData.length)));
+    if (state.playing) { stopSpeech(); speak(); } else paint();
+    save();
+  };
+
+  // keyboard: space = play/pause, arrows = chapters
+  document.addEventListener('keydown', e => {
+    if ($('reader').classList.contains('hidden')) return;
+    if (e.code === 'Space') { e.preventDefault(); $('play-btn').click(); }
+    if (e.code === 'ArrowRight') $('next-ch').click();
+    if (e.code === 'ArrowLeft') $('prev-ch').click();
+  });
+
+  // ---------- nav wiring ----------
+  $('start-btn').onclick = () => show('library');
+  $('genesis-btn').onclick = () => openChapter(0, 0, 0, true);
+  $('continue-btn').onclick = () => openChapter(state.bookIdx, state.ch, state.verse, true);
+  $('lib-close').onclick = () => show($('verses').children.length ? 'reader' : 'landing');
+  $('nav-books').onclick = () => { pause(); show('library'); };
+  $('loc').onclick = () => { pause(); show('library'); showChapters(state.bookIdx); };
+
+  if (!saved) $('continue-btn').classList.add('hidden');
+
+  loadManifest();
+})();
+</script>
+</body>
+</html>
