@@ -103,7 +103,11 @@
     .flip-zone.right { right: 0; border-radius: 0 10px 10px 0; }
     .flip-zone:hover { background: linear-gradient(to right, transparent, #00000008); }
     .flip-zone.left:hover { background: linear-gradient(to left, transparent, #00000008); }
-    #page-num { position: absolute; bottom: 18px; left: 0; right: 0; text-align: center; color: var(--pdim); font-size: 0.72rem; font-family: 'Courier New', monospace; letter-spacing: 0.15em; }
+    .flip-arrow { position: absolute; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; border: 1px solid #a5854566; background: #f2e9d5cc; color: #7a5b2a; font-size: 1.1rem; line-height: 32px; text-align: center; font-family: Georgia, serif; pointer-events: none; opacity: 0.55; transition: opacity 0.15s, box-shadow 0.15s; user-select: none; }
+    .flip-zone.left .flip-arrow { left: 10px; }
+    .flip-zone.right .flip-arrow { right: 10px; }
+    .flip-zone:hover .flip-arrow { opacity: 1; box-shadow: 0 0 12px #a5854566; }
+    #page-num { position: absolute; bottom: 16px; left: 48px; right: 48px; display: flex; justify-content: space-between; color: var(--pdim); font-size: 0.74rem; font-family: Georgia, serif; font-style: italic; letter-spacing: 0.08em; pointer-events: none; }
 
     /* ---- HUD ---- */
     #hud { position: fixed; bottom: 0; left: 0; right: 0; height: 74px; padding: 12px 18px; background: #10141a; border-top: 1px solid var(--gold-soft); display: flex; align-items: center; gap: 14px; z-index: 50; font-family: 'Courier New', monospace; }
@@ -155,9 +159,9 @@
     <div id="book">
       <div id="page-clip"><div id="pages"></div></div>
       <div id="turn-shade"></div>
-      <div class="flip-zone left" id="flip-left" title="previous page"></div>
-      <div class="flip-zone right" id="flip-right" title="next page"></div>
-      <div id="page-num"></div>
+      <div class="flip-zone left" id="flip-left" title="previous page"><div class="flip-arrow">&#10094;</div></div>
+      <div class="flip-zone right" id="flip-right" title="next page"><div class="flip-arrow">&#10095;</div></div>
+      <div id="page-num"><span id="pn-loc"></span><span id="pn-page"></span></div>
     </div>
     <div class="margin-col right" id="margin-right"></div>
   </div>
@@ -326,7 +330,8 @@
     const changed = p !== state.page;
     state.page = p;
     $('pages').style.transform = 'translateX(' + (-p * (state.pageW + 96)) + 'px)';
-    $('page-num').textContent = (p + 1) + ' / ' + state.pageCount;
+    $('pn-loc').textContent = $('loc').textContent;
+    $('pn-page').textContent = 'page ' + (p + 1) + ' of ' + state.pageCount;
     renderMarginNotes();
     if (changed && dir) {
       const book = $('book');
@@ -337,17 +342,22 @@
   }
 
   // ---------- margin notes ----------
-  function noteVerseIdx(n) {
+  function notePage(ni) {
+    // key the card to the star's page — a verse can span a page break, putting
+    // its star (end of verse) a page after the verse's start
+    const star = $('star' + ni);
+    if (star) return Math.max(0, Math.floor(star.offsetLeft / (state.pageW + 96)));
+    const n = state.chapterNotes[ni];
     let idx = state.chapterData.findIndex(v => v.v === n.v);
-    if (idx < 0) idx = state.chapterData.findIndex(v => v.v > n.v) - 1; // merged-verse fallback
-    return Math.max(0, idx);
+    if (idx < 0) idx = Math.max(0, state.chapterData.findIndex(v => v.v > n.v) - 1);
+    return pageOfVerse(Math.max(0, idx));
   }
   function renderMarginNotes() {
     const L = $('margin-left'), R = $('margin-right');
     L.innerHTML = ''; R.innerHTML = '';
     let side = 0;
     state.chapterNotes.forEach((n, ni) => {
-      if (pageOfVerse(noteVerseIdx(n)) !== state.page) return;
+      if (notePage(ni) !== state.page) return;
       const card = document.createElement('div');
       card.className = 'note-card'; card.dataset.ni = ni;
       const ref = document.createElement('span'); ref.className = 'nref'; ref.textContent = '★ ' + n.ref;
