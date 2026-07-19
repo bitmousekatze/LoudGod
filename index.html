@@ -149,6 +149,7 @@
       <button class="big-btn" id="start-btn">Choose a Book</button>
       <button class="big-btn" id="genesis-btn">Start at Genesis 1</button>
       <button class="big-btn" id="topics-btn">Topical Verse Finder</button>
+      <button class="big-btn" id="random-btn">🎲 Random Verse</button>
     </div>
   </div>
 
@@ -174,6 +175,7 @@
   <div id="topbar" class="hidden">
     <button class="small-btn" id="nav-books">books</button>
     <button class="small-btn" id="nav-topics">topics</button>
+    <button class="small-btn" id="nav-random" title="random verse">&#127922;</button>
     <span class="loc" id="loc"></span>
     <button class="small-btn" id="prev-ch">&#171; ch</button>
     <button class="small-btn" id="next-ch">ch &#187;</button>
@@ -540,6 +542,7 @@
     u.onend = () => {
       if (state.utter !== u) return; // cancelled
       if (vt) vt.textContent = text;
+      if (state.singleShot) { state.singleShot = false; pause(); return; } // random verse: one and done
       state.verse++;
       save();
       if (state.verse >= state.chapterData.length) nextChapter(true);
@@ -551,6 +554,7 @@
   function play() {
     if (state.playing) return;
     if (state.noteUtter) { speechSynthesis.cancel(); stopNote(); }
+    state.singleShot = false; // a manual PLAY always reads on continuously
     state.playing = true; $('play-btn').textContent = 'PAUSE'; speak();
   }
   function pause() { state.playing = false; $('play-btn').textContent = 'PLAY'; stopSpeech(); paint(); }
@@ -601,6 +605,20 @@
   $('continue-btn').onclick = () => openChapter(state.bookIdx, state.ch, state.verse, true);
   $('lib-close').onclick = () => show($('pages').children.length ? 'reader' : 'landing');
   $('nav-books').onclick = () => { pause(); show('library'); };
+  async function randomVerse() {
+    if (!state.manifest.length) return;
+    const bi = Math.floor(Math.random() * state.manifest.length);
+    const data = await loadChapterData(bi);
+    const ch = Math.floor(Math.random() * data.length);
+    const vi = Math.floor(Math.random() * Math.max(1, data[ch].length));
+    state.playing = false;
+    await openChapter(bi, ch, vi);
+    play();
+    state.singleShot = true; // after play(): flag is checked at utterance end
+  }
+  $('random-btn').onclick = randomVerse;
+  $('nav-random').onclick = randomVerse;
+
   $('topics-btn').onclick = openTopics;
   $('nav-topics').onclick = () => { pause(); openTopics(); };
   $('topics-close').onclick = () => show($('pages').children.length ? 'reader' : 'landing');
