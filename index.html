@@ -410,6 +410,14 @@
     if (target >= state.pageCount) { nextChapter(state.playing); return; }
     if (target < 0) { prevChapter(); return; }
     gotoPage(target, dir);
+    // move the reading position to the first verse of the new page, so playback
+    // follows the flip instead of snapping back to where it was reading
+    const first = state.chapterData.findIndex((_, i) => pageOfVerse(i) === target);
+    if (first >= 0) {
+      state.verse = first;
+      save();
+      if (state.playing) { stopSpeech(); speak(); } else paint();
+    }
   }
   $('flip-right').onclick = () => flip(1);
   $('flip-left').onclick = () => flip(-1);
