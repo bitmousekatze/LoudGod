@@ -136,6 +136,60 @@ for (const name of Object.keys(notes)) {
 }
 console.log('notes:', noteCount, 'books with notes:', Object.keys(notes).length);
 
+// ---- third pass: Topical Bible Verse Finder (splits ~2942-3125) ----
+const FULLNAME = {};
+for (const [, , name] of BOOKS) FULLNAME[name] = name;
+FULLNAME['Psalm'] = 'Psalms'; FULLNAME['Song of Solomon'] = 'Song of Songs';
+const topicFiles = readdirSync(SRC).filter(f => /_split_\d+\.html$/.test(f))
+  .map(f => [f, +f.match(/_split_(\d+)\.html$/)[1]])
+  .filter(([, n]) => n >= 2942 && n <= 3125).sort((a, b) => a[1] - b[1]).map(([f]) => f);
+const TOPIC_TOKEN = /<p class="calibre11"><span class="bold1">([^<]+)<\/span><\/p>|<p class="calibre4">([^<]*)\(<a [^>]*>([^<]+)<\/a>\)/g;
+const topics = [];
+let curTopic = null;
+for (const f of topicFiles) {
+  const html = readFileSync(join(SRC, f), 'utf8');
+  for (const m of html.matchAll(TOPIC_TOKEN)) {
+    if (m[1]) {
+      const t = clean(m[1]);
+      if (t && t === t.toUpperCase()) topics.push(curTopic = { topic: t, entries: [] });
+    } else if (curTopic) {
+      const ref = clean(m[3]);
+      const rm = ref.match(/^([1-3]? ?[A-Za-z ]+?) (\d+):(\d+)([-,–]\d+(?::\d+)?)?$/);
+      const book = rm && FULLNAME[rm[1].trim()];
+      if (!book) continue;
+      curTopic.entries.push({ d: clean(m[2]).replace(/\s*\($/, '').trim(), book, ch: +rm[2], v: +rm[3], ref });
+    }
+  }
+}
+// ---- fourth pass: Life Recovery Topical Index (splits 3126+) — NOTES subsections
+// hold verse refs pointing at passages that carry recovery notes
+const idxFiles = readdirSync(SRC).filter(f => /_split_\d+\.html$/.test(f))
+  .map(f => [f, +f.match(/_split_(\d+)\.html$/)[1]])
+  .filter(([, n]) => n >= 3126).sort((a, b) => a[1] - b[1]).map(([f]) => f);
+const IDX_TOKEN = /<big class="calibre8"><span class="bold">([^<(]+?)\s*(?:\(|<\/span>)|<span class="bold1">([A-Z ]+)<\/span>|<a [^>]*>([^<]+)<\/a>/g;
+let idxTopic = null, idxSection = null, merged = 0;
+const byName = {}; topics.forEach(t => byName[t.topic] = t);
+for (const f of idxFiles) {
+  const html = readFileSync(join(SRC, f), 'utf8');
+  for (const m of html.matchAll(IDX_TOKEN)) {
+    if (m[1]) { idxTopic = clean(m[1]).toUpperCase(); idxSection = null; }
+    else if (m[2]) idxSection = clean(m[2]);
+    else if (idxTopic && idxSection === 'NOTES') {
+      const ref = clean(m[3]).replace(/[–—�]/g, '–');
+      const rm = ref.match(/^([1-3]? ?[A-Za-z ]+?) (\d+):(\d+)([-,–]\d+(?::\d+)?)?/);
+      const book = rm && FULLNAME[rm[1].trim()];
+      if (!book) continue;
+      const t = byName[idxTopic] || (byName[idxTopic] = (topics.push({ topic: idxTopic, entries: [] }), topics[topics.length - 1]));
+      if (t.entries.some(e => e.ref === ref)) continue;
+      t.entries.push({ d: 'Recovery note on this passage', book, ch: +rm[2], v: +rm[3], ref });
+      merged++;
+    }
+  }
+}
+topics.sort((a, b) => a.topic.localeCompare(b.topic));
+writeFileSync(join(OUT, 'topics.json'), JSON.stringify(topics));
+console.log('topics:', topics.length, 'entries:', topics.reduce((a, t) => a + t.entries.length, 0), '(from topical index:', merged + ')');
+
 // Emit
 let verseCount = 0;
 const manifest = [];
